@@ -1,0 +1,27 @@
+#provision postgre 2 ec2 instance
+---
+- hosts: all
+  become: yes
+  tasks:
+    - name: Install PostgreSQL
+      package:
+        name: postgresql
+        state: present
+
+    - name: Ensure PostgreSQL service is running
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    - name: Create PostgreSQL user and database
+      postgresql_user:
+        name: myuser
+        password: mypassword
+        role_attr_flags: CREATEDB
+        state: present
+
+    - name: Create a PostgreSQL database
+      postgresql_db:
+        name: mydb
+        owner: myuser

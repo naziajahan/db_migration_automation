@@ -1,0 +1,37 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+    - name: Install PostgreSQL client
+      package:
+        name: postgresql-client
+        state: present
+
+    - name: Create a temporary directory for storing the data dump
+      tempfile:
+        state: directory
+      register: temp_dir
+
+    - name: Dump the 2-month-old data from the on-premises PostgreSQL database
+      shell: "pg_dump -h {{ onprem_host }} -U {{ onprem_user }} -Wp: mydb --file={{ temp_dir.path }}/data_dump.sql --table='{{ item }}' --dbname={{ onprem_dbname }}"
+      with_items: "{{ tables_to_migrate }}"
+      environment:
+        PGPASSWORD: "{{ onprem_password }}"
+      register: pg_dump_result
+
+    - name: Transfer the data dump to the AWS PostgreSQL instance
+      synchronize:
+        src: "{{ temp_dir.path }}/data_dump.sql"
+        dest: "/tmp/data_dump.sql"
+        mode: push
+
+    - name: Import the data into the AWS PostgreSQL instance
+      shell: "psql -h localhost -U {{ aws_user }} -d {{ aws_dbname }} -f /tmp/data_dump.sql"
+      environment:
+        PGPASSWORD: "{{ aws_password }}"
+      register: psql_result
+
+    - name: Remove the temporary directory and data dump
+      file:
+        path: "{{ temp_dir.path }}"
+        state: absent
