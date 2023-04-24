@@ -5,7 +5,7 @@ pipeline {
   stages {
     stage('Checkout code') {
       steps {
-        git 'https://github.com/naziajahan/db_hybrid.git' //share your repo
+        git 'https://github.com/naziajahan/db_hybrid.git'
       }
     }
 
