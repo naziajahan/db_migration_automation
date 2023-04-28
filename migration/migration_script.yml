@@ -1,4 +1,27 @@
----
+- hosts: onprem_db
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Dump the 2-month-old data from the on-premises PostgreSQL database
+      shell: "pg_dump -h {{ onprem_host }} -U {{ onprem_user }} -Wp: mydb --file=/tmp/data_dump_{{ item }}.sql --table='{{ item }}' --dbname={{ onprem_dbname }} --where='created_at >= now() - interval ''2 months'''"
+      with_items: "{{ tables_to_migrate }}"
+      environment:
+        PGPASSWORD: "{{ onprem_password }}"
+      register: pg_dump_result
+
+    - name: Compress the data dump
+      command: "gzip /tmp/data_dump_{{ item }}.sql"
+      with_items: "{{ tables_to_migrate }}"
+      register: compress_result
+
+    - name: Transfer the data dump from on-premises to AWS EC2
+      synchronize:
+        src: "/tmp/data_dump_{{ item }}.sql.gz"
+        dest: "{{ aws_user }}@{{ aws_host }}:/tmp/data_dump_{{ item }}.sql.gz"
+        mode: push
+      with_items: "{{ tables_to_migrate }}"
+      register: transfer_result
+
 - hosts: aws_db
   become: yes
   vars_files:
@@ -14,21 +37,14 @@
         state: directory
       register: temp_dir
 
-    - name: Dump the 2-month-old data from the on-premises PostgreSQL database
-      shell: "pg_dump -h {{ onprem_host }} -U {{ onprem_user }} -Wp: mydb --file={{ temp_dir.path }}/data_dump.sql --table='{{ item }}' --dbname={{ onprem_dbname }} --where="created_at >= now() - interval '2 months'"
+    - name: Extract the data dump
+      command: "gunzip /tmp/data_dump_{{ item }}.sql.gz"
       with_items: "{{ tables_to_migrate }}"
-      environment:
-        PGPASSWORD: "{{ onprem_password }}"
-      register: pg_dump_result
-
-    - name: Transfer the data dump to the AWS PostgreSQL instance
-      synchronize:
-        src: "{{ temp_dir.path }}/data_dump.sql"
-        dest: "/tmp/data_dump.sql"
-        mode: push
+      register: extract_result
 
     - name: Import the data into the AWS PostgreSQL instance
-      shell: "psql -h localhost -U {{ aws_user }} -d {{ aws_dbname }} -f /tmp/data_dump.sql"
+      command: "psql -h localhost -U {{ aws_user }} -d {{ aws_dbname }} -f /tmp/data_dump_{{ item }}.sql"
+      with_items: "{{ tables_to_migrate }}"
       environment:
         PGPASSWORD: "{{ aws_password }}"
       register: psql_result
