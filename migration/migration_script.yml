@@ -15,7 +15,7 @@
       register: temp_dir
 
     - name: Dump the 2-month-old data from the on-premises PostgreSQL database
-      shell: "pg_dump -h {{ onprem_host }} -U {{ onprem_user }} -Wp: mydb --file={{ temp_dir.path }}/data_dump.sql --table='{{ item }}' --dbname={{ onprem_dbname }}"
+      shell: "pg_dump -h {{ onprem_host }} -U {{ onprem_user }} -Wp: mydb --file={{ temp_dir.path }}/data_dump.sql --table='{{ item }}' --dbname={{ onprem_dbname }} --where="created_at >= now() - interval '2 months'"
       with_items: "{{ tables_to_migrate }}"
       environment:
         PGPASSWORD: "{{ onprem_password }}"
