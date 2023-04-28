@@ -1,6 +1,10 @@
 ---
 - hosts: aws_db
   become: yes
+  vars:
+    tables_to_migrate:
+      - table1
+      - table2
   tasks:
     - name: Install PostgreSQL client
       package:
@@ -11,6 +15,13 @@
       tempfile:
         state: directory
       register: temp_dir
+
+    - name: Dump the 2-month-old data from the on-premises PostgreSQL database
+      shell: "pg_dump -h {{ onprem_host }} -U {{ onprem_user }} -Wp: mydb --file={{ temp_dir.path }}/data_dump.sql --table='{{ item }}' --dbname={{ onprem_dbname }}"
+      with_items: "{{ tables_to_migrate }}"
+      environment:
+        PGPASSWORD: "{{ onprem_password }}"
+      register: pg_dump_result
 
     - name: Transfer the data dump to the AWS PostgreSQL instance
       synchronize:
@@ -28,10 +39,6 @@
       file:
         path: "{{ temp_dir.path }}"
         state: absent
-  vars:
-    tables_to_migrate:
-      - table1
-      - table2
 
 - hosts: onprem_db
   tasks:
